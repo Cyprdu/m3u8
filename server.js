@@ -2,6 +2,7 @@ import express from "express";
 import puppeteerExtra from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import puppeteer from "puppeteer";
+
 import fetch from "node-fetch";
 
 puppeteerExtra.use(StealthPlugin());
@@ -13,7 +14,8 @@ const PORT = process.env.PORT || 10000;
 async function extractM3U8(url) {
   const browser = await puppeteerExtra.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath: puppeteer.executablePath() // <-- utilise Chromium fourni par Puppeteer
   });
 
   const page = await browser.newPage();
