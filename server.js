@@ -12,8 +12,7 @@ const PORT = process.env.PORT || 10000;
 async function extractM3U8(url) {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    executablePath: "/usr/bin/google-chrome-stable", // Chrome fourni par Render
+    args: ["--no-sandbox", "--disable-setuid-sandbox"], // obligatoire sur Render
   });
 
   const page = await browser.newPage();
