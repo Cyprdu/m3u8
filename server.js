@@ -1,5 +1,5 @@
 import express from "express";
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import fetch from "node-fetch";
 
@@ -13,7 +13,6 @@ async function extractM3U8(url) {
   const browser = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"], // obligatoire sur Render
-    executablePath: "/usr/bin/chromium-browser", // Chromium fourni par Render
   });
 
   const page = await browser.newPage();
