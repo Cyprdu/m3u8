@@ -13,9 +13,10 @@ async function extractM3U8(url) {
   const browser = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath: "/usr/bin/google-chrome-stable", // Chrome fourni par Render
   });
-  const page = await browser.newPage();
 
+  const page = await browser.newPage();
   let foundUrl = null;
 
   page.on("response", async (response) => {
@@ -27,14 +28,13 @@ async function extractM3U8(url) {
 
   console.log(`🔍 Extraction du flux pour ${url}`);
   await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-
   await new Promise((r) => setTimeout(r, 5000));
 
   await browser.close();
   return foundUrl;
 }
 
-// --- Cache simple pour éviter de relancer Puppeteer à chaque fragment ---
+// --- Cache simple pour éviter de relancer Puppeteer à chaque requête ---
 const cache = new Map();
 
 // --- Route principale : /hls?url=... ---
@@ -43,6 +43,7 @@ app.get("/hls", async (req, res) => {
   if (!url) return res.status(400).send("URL manquante");
 
   try {
+    // Vérifie le cache
     let directUrl = cache.get(url);
     if (!directUrl) {
       directUrl = await extractM3U8(url);
@@ -51,6 +52,7 @@ app.get("/hls", async (req, res) => {
       console.log(`✅ Lien m3u8 extrait : ${directUrl}`);
     }
 
+    // Proxy M3U8
     const response = await fetch(directUrl);
     const text = await response.text();
 
@@ -84,6 +86,7 @@ app.get("/hls/segment", async (req, res) => {
   }
 });
 
+// --- Démarrage du serveur ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Serveur proxy M3U8 prêt sur port ${PORT}`);
 });
