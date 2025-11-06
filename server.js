@@ -1,7 +1,7 @@
 import express from "express";
 import puppeteerExtra from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import puppeteerCore from "puppeteer-core";
+import puppeteer from "puppeteer";
 import fetch from "node-fetch";
 
 puppeteerExtra.use(StealthPlugin());
@@ -9,11 +9,11 @@ puppeteerExtra.use(StealthPlugin());
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// --- Fonction pour extraire l'URL m3u8 ---
 async function extractM3U8(url) {
   const browser = await puppeteerExtra.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    executablePath: "/usr/bin/chromium", // <- Chromium installé via apt
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
   const page = await browser.newPage();
@@ -34,8 +34,10 @@ async function extractM3U8(url) {
   return foundUrl;
 }
 
+// --- Cache simple ---
 const cache = new Map();
 
+// --- Route principale /hls?url=... ---
 app.get("/hls", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).send("URL manquante");
@@ -65,6 +67,7 @@ app.get("/hls", async (req, res) => {
   }
 });
 
+// --- Route proxy pour segments .ts ---
 app.get("/hls/segment", async (req, res) => {
   const { src } = req.query;
   if (!src) return res.status(400).send("Segment manquant");
@@ -81,6 +84,7 @@ app.get("/hls/segment", async (req, res) => {
   }
 });
 
+// --- Démarrage du serveur ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Serveur proxy M3U8 prêt sur port ${PORT}`);
 });
