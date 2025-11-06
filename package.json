@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "postinstall": "npx puppeteer@latest browsers install chrome"
+    "install-chrome": "node ./install-chrome.js",
+    "postinstall": "npm run install-chrome"
   },
   "keywords": [],
   "author": "",
