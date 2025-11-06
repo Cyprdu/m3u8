@@ -5,9 +5,7 @@
   "description": "Proxy pour extraire et servir des flux M3U8",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "install-chrome": "node ./install-chrome.js",
-    "postinstall": "npm run install-chrome"
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
