@@ -1,19 +1,20 @@
 import express from "express";
-import puppeteer from "puppeteer-core";
+import puppeteerExtra from "puppeteer-extra"; // puppeteer-extra
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import puppeteerCore from "puppeteer-core"; // puppeteer-core pour Render
 import fetch from "node-fetch";
 
-puppeteer.use(StealthPlugin());
+puppeteerExtra.use(StealthPlugin()); // OK maintenant
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // --- Fonction : extrait une URL m3u8 ---
 async function extractM3U8(url) {
-  const browser = await puppeteer.launch({
+  const browser = await puppeteerExtra.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    executablePath: process.env.CHROME_PATH || undefined, // <- Render fournit CHROME_PATH
+    executablePath: process.env.CHROME_PATH || undefined, // Render CHROME_PATH
   });
 
   const page = await browser.newPage();
