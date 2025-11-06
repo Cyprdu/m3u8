@@ -1,100 +1,89 @@
-// server.js
-const express = require('express');
-const cors = require('cors');
-const puppeteerExtra = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const fetch = require('node-fetch');
+import express from "express";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import fetch from "node-fetch";
 
-puppeteerExtra.use(StealthPlugin());
+puppeteer.use(StealthPlugin());
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 10000;
 
-const PORT = process.env.PORT || 3000;
-let browser = null;
-
-// ------------------- Start Puppeteer -------------------
-async function startBrowser(headless = true) {
-  browser = await puppeteerExtra.launch({
-    headless,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--window-size=1280,720',
-      '--disable-blink-features=AutomationControlled'
-    ],
-    defaultViewport: { width: 1280, height: 720 }
+// --- Fonction : extrait une URL m3u8 ---
+async function extractM3U8(url) {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
-  console.log('Browser started (headless=' + headless + ')');
-}
-
-// ------------------- Extract M3U8 -------------------
-async function extractM3U8(pageUrl) {
-  if (!browser) throw new Error('Browser not started');
-
   const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36');
-  await page.setExtraHTTPHeaders({ 'accept-language': 'en-US,en;q=0.9', referer: pageUrl });
-  await page.setRequestInterception(false);
 
-  let m3u8Url = null;
+  let foundUrl = null;
 
-  page.on('response', async (response) => {
-    try {
-      const url = response.url();
-      const ct = (response.headers()['content-type'] || '').toLowerCase();
-      if (url.endsWith('.m3u8') || ct.includes('application/vnd.apple.mpegurl') || ct.includes('application/x-mpegurl')) {
-        if (!m3u8Url) m3u8Url = url;
-      }
-    } catch (e) {}
+  page.on("response", async (response) => {
+    const reqUrl = response.url();
+    if (reqUrl.includes(".m3u8") && !foundUrl) {
+      foundUrl = reqUrl;
+    }
   });
 
-  try {
-    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-    // on attend un peu pour laisser le player charger
-    await new Promise(r => setTimeout(r, 5000));
-  } catch (e) {
-    console.warn('extractM3U8 goto error:', e.message);
-  } finally {
-    try { await page.close(); } catch(e){}
-  }
+  console.log(`🔍 Extraction du flux pour ${url}`);
+  await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-  return m3u8Url;
+  await new Promise((r) => setTimeout(r, 5000));
+
+  await browser.close();
+  return foundUrl;
 }
 
-// ------------------- /extract -------------------
-app.get('/extract', async (req, res) => {
-  const pageUrl = req.query.url;
-  if (!pageUrl) return res.status(400).send('url param manquant');
+// --- Cache simple pour éviter de relancer Puppeteer à chaque fragment ---
+const cache = new Map();
+
+// --- Route principale : /hls?url=... ---
+app.get("/hls", async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send("URL manquante");
 
   try {
-    const m3u8Url = await extractM3U8(pageUrl);
-    if (!m3u8Url) return res.status(404).send('Aucun flux trouvé');
+    let directUrl = cache.get(url);
+    if (!directUrl) {
+      directUrl = await extractM3U8(url);
+      if (!directUrl) return res.status(404).send("Aucun flux m3u8 trouvé");
+      cache.set(url, directUrl);
+      console.log(`✅ Lien m3u8 extrait : ${directUrl}`);
+    }
 
-    // fetch le contenu M3U8
-    const resp = await fetch(m3u8Url, { headers: { Referer: pageUrl, 'User-Agent': 'Mozilla/5.0' } });
-    if (!resp.ok) return res.status(502).send('Impossible de récupérer la playlist');
+    const response = await fetch(directUrl);
+    const text = await response.text();
 
-    const body = await resp.text();
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.send(body);
+    const proxied = text.replace(
+      /(https?:\/\/[^\s"']+)/g,
+      (match) => `/hls/segment?src=${encodeURIComponent(match)}`
+    );
 
+    res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+    res.send(proxied);
   } catch (err) {
-    console.error('Error /extract:', err);
-    res.status(500).send('Erreur interne: ' + err.message);
+    console.error("❌ Erreur /hls :", err);
+    res.status(500).send("Erreur interne : " + err.message);
   }
 });
 
-// ------------------- Start Server -------------------
-startBrowser(true)
-  .then(() => app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`)))
-  .catch(err => { console.error('Could not start browser:', err); process.exit(1); });
+// --- Route proxy pour les segments .ts ---
+app.get("/hls/segment", async (req, res) => {
+  const { src } = req.query;
+  if (!src) return res.status(400).send("Segment manquant");
 
-process.on('SIGINT', async () => {
-  console.log('Shutting down...');
-  if (browser) await browser.close();
-  process.exit();
+  try {
+    const response = await fetch(src);
+    if (!response.ok) throw new Error("Erreur " + response.status);
+
+    res.setHeader("Content-Type", "video/mp2t");
+    response.body.pipe(res);
+  } catch (err) {
+    console.error("⚠️ Erreur segment :", err);
+    res.status(500).send("Erreur segment : " + err.message);
+  }
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Serveur proxy M3U8 prêt sur port ${PORT}`);
 });
